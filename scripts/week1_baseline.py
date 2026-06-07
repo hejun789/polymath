@@ -47,7 +47,10 @@ Process:
 Rules:
 - EVERY claim must cite a real source URL that you actually retrieved via the tools.
 - NEVER invent or guess a URL. Only cite URLs returned by web_search / page_fetch.
-- Use inline markdown citations like: claim text ([source](https://real-url)).
+- Each claim MUST end with an inline markdown link to the SPECIFIC source URL it
+  came from, e.g.: "Sulfide electrolytes now exceed 20 mS/cm ([Neware](https://...))".
+- Do NOT use a placeholder like the word "source" or "【source】" — always write a
+  real clickable markdown link to the actual URL.
 - End with a "## Sources" section listing every URL you cited.
 - Keep it to roughly one page. Be specific and factual, not vague.
 
@@ -92,21 +95,31 @@ TOOLS = [
 ]
 
 
-async def _dispatch_tool(name: str, args: dict) -> str:
-    """Run a tool call and return its result as a string for the model."""
+async def _dispatch_tool(name: str, args: dict, seen_urls: set[str]) -> str:
+    """Run a tool call, record any URLs it surfaced, return result as a string."""
     if name == "web_search":
         results = await web_search(
             query=args["query"], max_results=int(args.get("max_results", 5))
         )
+        for r in results:
+            if r.get("url"):
+                seen_urls.add(r["url"])
         return json.dumps(results, ensure_ascii=False)
     if name == "page_fetch":
+        if args.get("url"):
+            seen_urls.add(args["url"])
         return await page_fetch(url=args["url"])
     return f"ERROR: unknown tool {name!r}"
 
 
-async def run(topic: str) -> str:
-    """Run the research loop and return the final markdown report."""
+async def run(topic: str) -> tuple[str, set[str]]:
+    """Run the research loop.
+
+    Returns (final_markdown_report, set_of_urls_the_tools_actually_surfaced).
+    The URL set is used to verify the report contains no hallucinated links.
+    """
     model = model_for(Role.SEARCH)  # tool-calling-capable model for Week 1
+    seen_urls: set[str] = set()
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Research this topic: {topic}"},
@@ -120,8 +133,8 @@ async def run(topic: str) -> str:
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
             content = message.get("content") or ""
-            log.info("loop.final", n_chars=len(content))
-            return content
+            log.info("loop.final", n_chars=len(content), n_urls_seen=len(seen_urls))
+            return content, seen_urls
 
         for call in tool_calls:
             fn = call["function"]
@@ -132,7 +145,7 @@ async def run(topic: str) -> str:
                 args = {}
             log.info("tool.call", tool=name, args=args)
             try:
-                result = await _dispatch_tool(name, args)
+                result = await _dispatch_tool(name, args, seen_urls)
             except Exception as exc:  # noqa: BLE001 - report to model, keep loop alive
                 log.warning("tool.error", tool=name, error=str(exc))
                 result = f"ERROR running {name}: {exc}"
@@ -147,6 +160,23 @@ async def run(topic: str) -> str:
     raise RuntimeError(
         f"Hit MAX_TOOL_ITERATIONS ({MAX_TOOL_ITERATIONS}) without a final answer."
     )
+
+
+# Stop at whitespace, closing brackets, quotes, and CJK citation brackets (【】)
+# that models like gpt-oss wrap around inline citations.
+_URL_RE = re.compile(r"https?://[^\s\)\]\}\"'<>【】「」]+")
+_URL_TRIM = ".,);]】」>"
+
+
+def verify_citations(report: str, seen_urls: set[str]) -> tuple[int, list[str]]:
+    """Return (n_cited_urls, hallucinated_urls).
+
+    A URL in the report is "hallucinated" if the tools never surfaced it. We
+    normalize trailing punctuation/brackets and compare against the seen set.
+    """
+    cited = {u.rstrip(_URL_TRIM) for u in _URL_RE.findall(report)}
+    hallucinated = sorted(u for u in cited if u not in seen_urls)
+    return len(cited), hallucinated
 
 
 def _slugify(text: str) -> str:
@@ -172,7 +202,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _configure_logging()
-    report = asyncio.run(run(args.topic))
+    report, seen_urls = asyncio.run(run(args.topic))
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -180,7 +210,16 @@ def main() -> None:
     header = f"# Research summary: {args.topic}\n\n*Generated {ts} UTC by Polymath Week 1 baseline.*\n\n"
     out_path.write_text(header + report.strip() + "\n", encoding="utf-8")
 
+    n_cited, hallucinated = verify_citations(report, seen_urls)
     print(f"\nReport written to: {out_path}")
+    print(f"URLs surfaced by tools: {len(seen_urls)} | distinct URLs cited: {n_cited}")
+    if hallucinated:
+        print(f"WARNING: {len(hallucinated)} cited URL(s) were NOT surfaced by tools "
+              f"(possible hallucination):")
+        for u in hallucinated:
+            print(f"  - {u}")
+    else:
+        print("Citation check: PASS — every cited URL was actually retrieved by a tool.")
 
 
 if __name__ == "__main__":

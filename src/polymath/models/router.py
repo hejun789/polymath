@@ -19,12 +19,16 @@ class Role(str, Enum):
     WRITER = "writer"
 
 
-# Free-tier OpenRouter variants (see PROJECT_SPEC.md §4).
+# Free-tier OpenRouter variants. NOTE: the model IDs in PROJECT_SPEC.md §4
+# (deepseek-r1:free, gemini-2.0-flash-exp:free) were retired from OpenRouter's
+# free tier; these are current equivalents verified against the live /models
+# list on 2026-06-07. Roles that call tools (search/reader) use an instruct
+# model with tool support; reasoning-heavy roles use a reasoning-capable model.
 _DEFAULTS: dict[Role, str] = {
-    Role.PLANNER: "deepseek/deepseek-r1:free",
-    Role.SEARCH: "google/gemini-2.0-flash-exp:free",
-    Role.READER: "google/gemini-2.0-flash-exp:free",
-    Role.CRITIC: "deepseek/deepseek-r1:free",
+    Role.PLANNER: "z-ai/glm-4.5-air:free",
+    Role.SEARCH: "openai/gpt-oss-120b:free",
+    Role.READER: "openai/gpt-oss-120b:free",
+    Role.CRITIC: "z-ai/glm-4.5-air:free",
     Role.WRITER: "meta-llama/llama-3.3-70b-instruct:free",
 }
 

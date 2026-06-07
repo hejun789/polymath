@@ -11,7 +11,8 @@ def test_every_role_has_a_model():
 
 
 def test_search_role_default():
-    assert model_for(Role.SEARCH) == "google/gemini-2.0-flash-exp:free"
+    # Search role must use a free-tier model variant.
+    assert model_for(Role.SEARCH).endswith(":free")
 
 
 def test_env_override(monkeypatch):
