@@ -1,0 +1,33 @@
+[project]
+name = "polymath"
+version = "0.1.0"
+description = "Multi-agent research & briefing studio: topic -> sourced report + slide deck"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Week 1 baseline needs only these. Heavier deps (langgraph, chromadb,
+    # sentence-transformers, python-pptx, mcp, streamlit) are added in the
+    # phase that first uses them, per PROJECT_SPEC.md "commit per phase".
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+    "trafilatura>=1.9",
+    "structlog>=24.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/polymath"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
