@@ -1,0 +1,24 @@
+{
+  "topic": "current state of solid-state batteries",
+  "generated_utc": "20260608-021653",
+  "claims": [
+    {
+      "claim": "Solid-state batteries are mostly in the advanced pilot stage.",
+      "evidence_quote": "They’re mostly in the advanced pilot stage.",
+      "source_url": "https://go-e.com/en/magazine/solid-state-batteries",
+      "confidence": "high"
+    },
+    {
+      "claim": "Companies are testing high-performance prototypes and building small-scale production lines.",
+      "evidence_quote": "Companies are testing high-performance prototypes and building small-scale production lines.",
+      "source_url": "https://go-e.com/en/magazine/solid-state-batteries",
+      "confidence": "high"
+    },
+    {
+      "claim": "An initial commercial debut in high-end cars is expected around 2027 - 2028.",
+      "evidence_quote": "An initial commercial debut in high-end cars is expected around 2027 - 2028.",
+      "source_url": "https://go-e.com/en/magazine/solid-state-batteries",
+      "confidence": "high"
+    }
+  ]
+}

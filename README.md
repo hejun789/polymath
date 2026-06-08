@@ -11,7 +11,9 @@ See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full design and build phases.
 
 - [x] **Week 1 — Single-agent baseline.** `scripts/week1_baseline.py`: one LLM + web
       search + page fetch (function-calling), producing a cited 1-page markdown summary.
-- [ ] Week 2 — Structured claim extraction (Reader)
+- [x] **Week 2 — Structured claim extraction (Reader).** `agents/reader.py` extracts
+      `Claim` JSON from page text, Pydantic-validates with ≤2 retries. Acceptance eval:
+      100% first-try valid across 5 topics (`eval/run_eval.py`).
 - [ ] Week 3 — Memory + Critic
 - [ ] Week 4 — LangGraph orchestration
 - [ ] Week 5 — Slide deck + MCP
@@ -31,3 +33,13 @@ uv run python scripts/week1_baseline.py "current state of solid-state batteries"
 ```
 
 Writes a cited markdown summary to `outputs/`.
+
+## Week 2 usage
+
+```bash
+# Extract structured claims for one topic:
+uv run python scripts/week2_reader.py "solid-state batteries" --pages 3
+
+# Run the acceptance eval (validation rates across 5 topics):
+uv run python eval/run_eval.py --topics 5 --pages 2
+```
