@@ -1,75 +1,124 @@
-# Polymath — Multi-Agent Research & Briefing Studio
+---
+title: Polymath
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.58.0
+app_file: app.py
+pinned: false
+---
 
-Given a research topic, Polymath produces a **sourced markdown research report** with
-inline citations and an **auto-generated PowerPoint deck**. It coordinates specialized
-agents (Planner, Search, Reader, Critic, Writer) through a LangGraph state machine, with
-a Chroma vector store as shared working memory and tools exposed over MCP.
+# 🧠 Polymath — Multi-Agent Research & Briefing Studio
 
-See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full design and build phases.
+Give Polymath a research topic; it returns a **sourced markdown report** with inline
+citations and an **auto-generated PowerPoint deck**. Specialized agents (Planner,
+Search, Reader, Critic, Writer) are coordinated by a **LangGraph** state machine, share
+a **Chroma** vector store as working memory, and call their tools over **MCP**.
 
-## Status
+> 🎥 _Demo video: (add link after recording)_
+> 🖼️ _Screenshot: `docs/screenshot.png` (add after first deploy)_
 
-- [x] **Week 1 — Single-agent baseline.** `scripts/week1_baseline.py`: one LLM + web
-      search + page fetch (function-calling), producing a cited 1-page markdown summary.
-- [x] **Week 2 — Structured claim extraction (Reader).** `agents/reader.py` extracts
-      `Claim` JSON from page text, Pydantic-validates with ≤2 retries. Acceptance eval:
-      100% first-try valid across 5 topics (`eval/run_eval.py`).
-- [x] **Week 3 — Memory + Critic.** `memory/vector_store.py` (Chroma) stores every
-      claim; `agents/critic.py` reads accumulated claims and decides continue/stop with
-      gap-targeting subtasks; `scripts/week3_research.py` loops until stop or 3 iterations.
-      Acceptance: Critic spotted the omitted aspect in 5/5 cases (`eval/run_critic_eval.py`).
-- [x] **Week 4 — LangGraph orchestration.** `graph/state.py` (`GraphState`) + `graph/workflow.py`
-      wire Planner→Search→Reader→Critic→(loop|Writer)→END with conditional edges and per-node
-      trace logging. Adds `agents/planner.py` + `agents/writer.py`. Runs end to end via
-      `python -m polymath.graph.workflow --topic "..."` → cited markdown report.
-- [x] **Week 5 — Slide deck + MCP.** `outputs/slides.py` renders a `.pptx` (title +
-      per-finding slides) from an LLM-built `SlideDeck`; `mcp_server/server.py` (FastMCP)
-      exposes web_search/page_fetch/claim_extract; the workflow calls search+fetch through
-      `tools/mcp_client.py` over stdio. One run → cited `.md` report **and** `.pptx` deck.
-- [ ] Week 6 — Streamlit UI + deploy
+## Architecture
 
-## Setup
+```
+        topic
+          │
+          ▼
+     ┌─────────┐   decomposes topic → subtasks
+     │ Planner │
+     └────┬────┘
+          ▼
+     ┌─────────┐   web_search (via MCP) → URLs
+     │ Search  │
+     └────┬────┘
+          ▼
+     ┌─────────┐   page_fetch (via MCP) → trafilatura → Reader extracts Claims
+     │ Reader  │ ──────────────► Chroma vector store (working memory)
+     └────┬────┘                          │
+          ▼                               │ all claims so far
+     ┌─────────┐  ◄───────────────────────┘
+     │ Critic  │   gaps/contradictions?  continue (new subtasks) ──┐ loop ≤ 3×
+     └────┬────┘                          stop                      │
+          │  ────────────────────────────────────────── back to Search
+          ▼
+     ┌─────────┐   synthesizes from Claims
+     │ Writer  │
+     └────┬────┘
+     ┌────┴───────────┐
+     ▼                ▼
+  report.md       deck.pptx
+```
+
+Tools (`web_search`, `page_fetch`, `claim_extract`) are exposed by a local **MCP server**
+(`mcp_server/server.py`) and called through an MCP client over stdio.
+
+## Status — all six phases complete
+
+| Phase | What | Acceptance |
+|---|---|---|
+| 1 | Single-agent baseline (LLM + tools → cited summary) | ≥5 cited claims, no hallucinated URLs |
+| 2 | Structured claim extraction (Reader + Pydantic, retry) | 100% first-try valid / 5 topics |
+| 3 | Chroma memory + Critic continue/stop loop | omitted aspect found 5/5 cases |
+| 4 | LangGraph orchestration (Planner…Writer, conditional edges) | runs end-to-end w/ per-node trace |
+| 5 | PPTX deck + tools over MCP | workflow over MCP, valid PPTX |
+| 6 | Streamlit UI + deploy | enter topic → download both artifacts |
+
+## Tech stack
+
+Python 3.11+ · `uv` · LangGraph · OpenRouter (free-tier models, routed in
+`models/router.py`) · Pydantic v2 · Chroma (+ ONNX all-MiniLM-L6-v2) · Tavily ·
+trafilatura · MCP · python-pptx · Streamlit · pytest.
+
+## Quickstart
 
 ```bash
 uv sync                      # create .venv and install deps
-cp .env.example .env         # then fill in OPENROUTER_API_KEY and TAVILY_API_KEY
+cp .env.example .env         # fill in OPENROUTER_API_KEY and TAVILY_API_KEY
+
+# Web app (recommended):
+uv run streamlit run app.py
+
+# Or the full pipeline from the CLI (search+fetch over MCP) → .md + .pptx in outputs/:
+uv run python -m polymath.graph.workflow --topic "current state of solid-state batteries"
 ```
 
-## Week 1 usage
+Get free keys at [openrouter.ai](https://openrouter.ai) and [tavily.com](https://tavily.com).
+
+## Tests
 
 ```bash
-uv run python scripts/week1_baseline.py "current state of solid-state batteries"
+uv run pytest          # full suite (offline; no API keys needed)
 ```
 
-Writes a cited markdown summary to `outputs/`.
-
-## Week 2 usage
+Acceptance evals (these make live API calls):
 
 ```bash
-# Extract structured claims for one topic:
-uv run python scripts/week2_reader.py "solid-state batteries" --pages 3
-
-# Run the acceptance eval (validation rates across 5 topics):
-uv run python eval/run_eval.py --topics 5 --pages 2
+uv run python eval/run_eval.py --topics 5 --pages 2   # Week 2: extraction validity
+uv run python eval/run_critic_eval.py                 # Week 3: Critic gap detection
 ```
 
-## Week 3 usage
+## Deploy to Hugging Face Spaces
+
+This repo doubles as a Streamlit Space (config is the YAML frontmatter at the top of
+this file). To deploy:
+
+1. Create a new **Streamlit** Space on Hugging Face.
+2. Push this repo to the Space remote (`git push hf main`).
+3. In **Settings → Variables and secrets**, add `OPENROUTER_API_KEY` and
+   `TAVILY_API_KEY` as **secrets**.
+4. The Space installs from `requirements.txt`. The first run downloads the ~80 MB ONNX
+   embedding model once (cached afterward).
+
+The app reads keys from environment variables (via `config.py`), so the secrets are
+picked up automatically.
+
+## Earlier-phase scripts (still runnable)
 
 ```bash
-# Iterative research with memory + Critic (loops until stop or 3 iterations):
-uv run python scripts/week3_research.py "remote work" --max-iterations 3 --pages 2
-
-# Run the Critic acceptance eval (omitted-aspect detection over 5 cases):
-uv run python eval/run_critic_eval.py
+uv run python scripts/week1_baseline.py "..."                       # Week 1
+uv run python scripts/week2_reader.py "..." --pages 3               # Week 2
+uv run python scripts/week3_research.py "..." --max-iterations 3    # Week 3
 ```
 
-## Week 4 usage
-
-```bash
-# Full pipeline via the LangGraph state machine -> cited markdown report:
-uv run python -m polymath.graph.workflow --topic "current state of solid-state batteries" --max-iterations 3
-```
-
-Web search and page fetch run through the local MCP server (`mcp_server/server.py`),
-spawned automatically over stdio. Each run writes both a `.md` report and a `.pptx`
-deck to `outputs/`.
+See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full design.

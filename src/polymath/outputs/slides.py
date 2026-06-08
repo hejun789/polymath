@@ -6,6 +6,7 @@ slide per finding (title + up to 3 bullets + a source-URL footer).
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 from pptx import Presentation
@@ -19,7 +20,21 @@ _CONTENT_LAYOUT = 1  # "Title and Content"
 
 
 def render_deck(deck: SlideDeck, path: str | Path) -> Path:
+    """Render the deck to a .pptx file at `path` and return the path."""
     path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _build_presentation(deck).save(str(path))
+    return path
+
+
+def deck_to_bytes(deck: SlideDeck) -> bytes:
+    """Render the deck to in-memory .pptx bytes (for downloads)."""
+    buf = io.BytesIO()
+    _build_presentation(deck).save(buf)
+    return buf.getvalue()
+
+
+def _build_presentation(deck: SlideDeck) -> Presentation:
     prs = Presentation()
 
     # Title slide.
@@ -44,9 +59,7 @@ def render_deck(deck: SlideDeck, path: str | Path) -> Path:
         if slide.source_url:
             _add_source_footer(s, slide.source_url)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(str(path))
-    return path
+    return prs
 
 
 def _add_source_footer(slide, source_url: str) -> None:

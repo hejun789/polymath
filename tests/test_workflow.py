@@ -107,3 +107,22 @@ async def test_graph_loops_once_then_stops():
     assert nodes.count("search") == 2  # looped back through search once
     assert nodes.count("critic") == 2
     assert result["report"] != ""
+
+
+async def test_astream_values_yields_progress_and_final():
+    """The app streams stream_mode='values'; verify the contract it relies on:
+    intermediate states grow the trace, and the final state has the report."""
+    async def review_fn(*, topic, claims, iteration, max_iterations):
+        return CriticDecision(decision="stop", reason="done")
+
+    graph = build_workflow(_make_deps(review_fn))
+    states = []
+    async for state in graph.astream(GraphState(topic="t"), stream_mode="values"):
+        states.append(state)
+
+    # Trace grows monotonically across streamed states.
+    trace_lens = [len(s.get("trace", [])) for s in states]
+    assert trace_lens == sorted(trace_lens)
+    final = states[-1]
+    assert final["report"] != ""
+    assert [t["node"] for t in final["trace"]] == ["planner", "search", "reader", "critic", "writer"]

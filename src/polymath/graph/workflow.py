@@ -4,7 +4,7 @@
 
 Nodes are thin orchestration over the already-tested agents and tools. All
 collaborators are injected via WorkflowDeps so the graph can be tested with
-fakes; `make_default_workflow()` wires the real agents + tools + Chroma store.
+fakes; `run_workflow()` / `make_direct_workflow()` wire the real agents + tools.
 
 Run end to end:
     python -m polymath.graph.workflow --topic "current state of solid-state batteries"
@@ -135,58 +135,69 @@ def build_workflow(deps: WorkflowDeps):
     return g.compile()
 
 
-def make_default_workflow():
-    """Wire the real agents, tools, and a fresh Chroma store."""
+def _assemble_deps(search_fn, fetch_fn, store, writer) -> WorkflowDeps:
+    """Bundle the real agents with the given search/fetch functions."""
     from polymath.agents.critic import CriticAgent
     from polymath.agents.planner import PlannerAgent
     from polymath.agents.reader import ReaderAgent
+
+    return WorkflowDeps(
+        plan_fn=PlannerAgent().plan,
+        search_fn=search_fn,
+        fetch_fn=fetch_fn,
+        extract_fn=ReaderAgent().extract,
+        review_fn=CriticAgent().review,
+        write_fn=writer.write,
+        store=store,
+    )
+
+
+def make_direct_workflow(persist_dir: str | None = None):
+    """Graph wired with direct (non-MCP) tools + an ephemeral store by default.
+
+    Returns (compiled_graph, writer). Used by the Streamlit app, which streams
+    node updates and builds the deck from the final claims.
+    """
     from polymath.agents.writer import WriterAgent
     from polymath.memory.vector_store import ClaimStore
     from polymath.tools.page_fetch import page_fetch
     from polymath.tools.web_search import web_search
 
-    store = ClaimStore(persist_dir=settings.chroma_persist_dir)
-    store.reset()  # fresh per-session memory
-
-    deps = WorkflowDeps(
-        plan_fn=PlannerAgent().plan,
-        search_fn=web_search,
-        fetch_fn=page_fetch,
-        extract_fn=ReaderAgent().extract,
-        review_fn=CriticAgent().review,
-        write_fn=WriterAgent().write,
-        store=store,
-    )
-    return build_workflow(deps)
+    store = ClaimStore(persist_dir=persist_dir)
+    store.reset()
+    writer = WriterAgent()
+    return build_workflow(_assemble_deps(web_search, page_fetch, store, writer)), writer
 
 
-async def run_workflow(topic: str, max_iterations: int = 3) -> dict:
-    """Run the full pipeline with web_search/page_fetch flowing through MCP, then
-    synthesize a slide deck. Returns the final state plus a "deck" key.
+async def run_workflow(topic: str, max_iterations: int = 3, use_mcp: bool = True) -> dict:
+    """Run the full pipeline and synthesize a slide deck.
+
+    use_mcp=True routes web_search/page_fetch through the MCP server (CLI default);
+    use_mcp=False calls the tools directly (used by the app). Returns the final
+    state plus a "deck" key.
     """
-    from polymath.agents.critic import CriticAgent
-    from polymath.agents.planner import PlannerAgent
-    from polymath.agents.reader import ReaderAgent
     from polymath.agents.writer import WriterAgent
     from polymath.memory.vector_store import ClaimStore
-    from polymath.tools.mcp_client import mcp_tools
 
     writer = WriterAgent()
+    initial = GraphState(topic=topic, max_iterations=max_iterations)
 
-    async with mcp_tools() as tools:  # spawns the MCP tool server over stdio
+    if use_mcp:
+        from polymath.tools.mcp_client import mcp_tools
+
+        async with mcp_tools() as tools:  # spawns the MCP tool server over stdio
+            store = ClaimStore(persist_dir=settings.chroma_persist_dir)
+            store.reset()
+            graph = build_workflow(_assemble_deps(tools.web_search, tools.page_fetch, store, writer))
+            result = await graph.ainvoke(initial)
+    else:
+        from polymath.tools.page_fetch import page_fetch
+        from polymath.tools.web_search import web_search
+
         store = ClaimStore(persist_dir=settings.chroma_persist_dir)
         store.reset()
-        deps = WorkflowDeps(
-            plan_fn=PlannerAgent().plan,
-            search_fn=tools.web_search,  # via MCP
-            fetch_fn=tools.page_fetch,  # via MCP
-            extract_fn=ReaderAgent().extract,
-            review_fn=CriticAgent().review,
-            write_fn=writer.write,
-            store=store,
-        )
-        graph = build_workflow(deps)
-        result = await graph.ainvoke(GraphState(topic=topic, max_iterations=max_iterations))
+        graph = build_workflow(_assemble_deps(web_search, page_fetch, store, writer))
+        result = await graph.ainvoke(initial)
 
     # Second artifact: a slide deck synthesized from the gathered claims.
     result["deck"] = await writer.build_deck(topic=topic, claims=result["claims"])

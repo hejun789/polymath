@@ -1,10 +1,12 @@
 """Tests for the PPTX renderer. Round-tripping through python-pptx is also our
 proxy for 'opens cleanly': a file python-pptx re-parses is valid OOXML."""
 
+import io
+
 from pptx import Presentation
 
 from polymath.models.schemas import Slide, SlideDeck
-from polymath.outputs.slides import render_deck
+from polymath.outputs.slides import deck_to_bytes, render_deck
 
 
 def _deck() -> SlideDeck:
@@ -48,3 +50,11 @@ def test_bullets_capped_at_three(tmp_path):
     )
     assert "b3" in body_text
     assert "b4" not in body_text  # capped to 3 bullets
+
+
+def test_deck_to_bytes_is_valid_pptx():
+    data = deck_to_bytes(_deck())
+    assert isinstance(data, bytes)
+    assert data[:2] == b"PK"  # OOXML is a zip archive
+    prs = Presentation(io.BytesIO(data))  # re-parses == valid
+    assert len(prs.slides) == 3
