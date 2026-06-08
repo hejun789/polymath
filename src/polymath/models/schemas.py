@@ -32,6 +32,12 @@ class ExtractedClaims(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
 
 
+class ResearchPlan(BaseModel):
+    """The Planner's decomposition of a topic into search subtasks."""
+
+    subtasks: list[str] = Field(default_factory=list)
+
+
 class CriticDecision(BaseModel):
     """The Critic's verdict after reviewing accumulated claims.
 

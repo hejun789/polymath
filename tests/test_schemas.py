@@ -3,7 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from polymath.models.schemas import Claim, CriticDecision, ExtractedClaims
+from polymath.models.schemas import (
+    Claim,
+    CriticDecision,
+    ExtractedClaims,
+    ResearchPlan,
+)
 
 
 def test_valid_claim_constructs():
@@ -84,3 +89,12 @@ def test_critic_decision_stop():
 def test_critic_decision_rejects_bad_decision():
     with pytest.raises(ValidationError):
         CriticDecision.model_validate({"decision": "maybe"})
+
+
+def test_research_plan_parses_subtasks():
+    p = ResearchPlan.model_validate({"subtasks": ["a", "b", "c"]})
+    assert p.subtasks == ["a", "b", "c"]
+
+
+def test_research_plan_defaults_empty():
+    assert ResearchPlan().subtasks == []

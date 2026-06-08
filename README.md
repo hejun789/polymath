@@ -18,7 +18,10 @@ See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full design and build phases.
       claim; `agents/critic.py` reads accumulated claims and decides continue/stop with
       gap-targeting subtasks; `scripts/week3_research.py` loops until stop or 3 iterations.
       Acceptance: Critic spotted the omitted aspect in 5/5 cases (`eval/run_critic_eval.py`).
-- [ ] Week 4 — LangGraph orchestration
+- [x] **Week 4 — LangGraph orchestration.** `graph/state.py` (`GraphState`) + `graph/workflow.py`
+      wire Planner→Search→Reader→Critic→(loop|Writer)→END with conditional edges and per-node
+      trace logging. Adds `agents/planner.py` + `agents/writer.py`. Runs end to end via
+      `python -m polymath.graph.workflow --topic "..."` → cited markdown report.
 - [ ] Week 5 — Slide deck + MCP
 - [ ] Week 6 — Streamlit UI + deploy
 
@@ -55,4 +58,11 @@ uv run python scripts/week3_research.py "remote work" --max-iterations 3 --pages
 
 # Run the Critic acceptance eval (omitted-aspect detection over 5 cases):
 uv run python eval/run_critic_eval.py
+```
+
+## Week 4 usage
+
+```bash
+# Full pipeline via the LangGraph state machine -> cited markdown report:
+uv run python -m polymath.graph.workflow --topic "current state of solid-state batteries" --max-iterations 3
 ```

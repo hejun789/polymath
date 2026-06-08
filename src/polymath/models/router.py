@@ -29,7 +29,9 @@ _DEFAULTS: dict[Role, str] = {
     Role.SEARCH: "openai/gpt-oss-120b:free",
     Role.READER: "openai/gpt-oss-120b:free",
     Role.CRITIC: "z-ai/glm-4.5-air:free",
-    Role.WRITER: "meta-llama/llama-3.3-70b-instruct:free",
+    # llama-3.3-70b:free is frequently rate-limited (429) upstream; gpt-oss-120b
+    # has reliable free capacity and handles long-form synthesis well.
+    Role.WRITER: "openai/gpt-oss-120b:free",
 }
 
 
