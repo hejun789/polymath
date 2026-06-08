@@ -1,0 +1,49 @@
+# Hand-built cases for the Week 3 Critic acceptance test. Each set of claims
+# deliberately covers several angles of a topic but OMITS one major aspect.
+# A good Critic should decide "continue" and target the omitted aspect; we pass
+# the case if any expected_keyword appears in its new_subtasks/reason.
+cases:
+  - topic: "electric vehicles"
+    omitted_aspect: "environmental impact / battery recycling"
+    claims:
+      - "Modern electric vehicles offer over 400 km of range on a single charge."
+      - "EV charging from 10% to 80% can take as little as 20 minutes on fast chargers."
+      - "The total cost of ownership of an EV is now competitive with petrol cars."
+      - "Electric motors deliver instant torque and strong acceleration."
+    expected_keywords: ["recycl", "environment", "emission", "disposal", "lifecycle", "mining", "end-of-life", "battery waste"]
+
+  - topic: "remote work"
+    omitted_aspect: "downsides: isolation, collaboration, mental health"
+    claims:
+      - "Remote work increases measured productivity for many knowledge workers."
+      - "Employees save significant time and money by not commuting."
+      - "Companies reduce office real-estate costs with remote arrangements."
+      - "Remote work widens the available talent pool beyond one city."
+    expected_keywords: ["isolation", "lonel", "mental health", "collaborat", "downside", "drawback", "challenge", "burnout", "disconnect"]
+
+  - topic: "solar photovoltaic energy"
+    omitted_aspect: "intermittency and storage / grid integration"
+    claims:
+      - "The cost of solar panels has fallen by roughly 90% over the past decade."
+      - "Solar cell efficiency in commercial panels now commonly exceeds 22%."
+      - "Global solar installed capacity has grown rapidly year over year."
+      - "Rooftop solar can substantially lower household electricity bills."
+    expected_keywords: ["intermitten", "storage", "battery", "grid", "night", "reliab", "baseload", "variab"]
+
+  - topic: "artificial intelligence in healthcare"
+    omitted_aspect: "ethics, privacy, bias, regulation"
+    claims:
+      - "AI models can match radiologists on some diagnostic imaging tasks."
+      - "AI triage tools speed up patient prioritization in emergency departments."
+      - "Machine learning predicts patient deterioration earlier than some standard scores."
+      - "AI reduces administrative workload through automated documentation."
+    expected_keywords: ["privacy", "ethic", "bias", "data protection", "regulat", "liabilit", "consent", "fairness", "discriminat"]
+
+  - topic: "health effects of coffee consumption"
+    omitted_aspect: "risks and negative effects"
+    claims:
+      - "Moderate coffee consumption is associated with lower risk of type 2 diabetes."
+      - "Coffee contains antioxidants that may benefit overall health."
+      - "Caffeine improves short-term alertness and concentration."
+      - "Some studies link coffee drinking to longer lifespan."
+    expected_keywords: ["risk", "negative", "anxiet", "sleep", "insomnia", "dependen", "side effect", "withdrawal", "pregnan", "blood pressure", "adverse"]

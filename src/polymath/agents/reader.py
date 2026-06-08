@@ -9,7 +9,6 @@ of what the model returns, so a claim can never cite the wrong page.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +16,7 @@ from pydantic import ValidationError
 
 from polymath.agents.base import BaseAgent
 from polymath.models.openrouter import chat_completion
+from polymath.models.parsing import parse_json
 from polymath.models.router import Role, model_for
 from polymath.models.schemas import Claim, ExtractedClaims
 
@@ -34,27 +34,6 @@ class ReaderResult:
     claims: list[Claim] = field(default_factory=list)
     attempts: int = 0
     validated: bool = False
-
-
-def _strip_to_json(content: str) -> str:
-    """Remove markdown fences / surrounding prose, return a JSON-looking string."""
-    s = content.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
-        s = re.sub(r"\n?```$", "", s).strip()
-    return s
-
-
-def _parse(content: str) -> dict:
-    """Parse JSON from model output, tolerating a leading/trailing prose wrapper."""
-    s = _strip_to_json(content)
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", s, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        raise
 
 
 class ReaderAgent(BaseAgent):
@@ -76,7 +55,7 @@ class ReaderAgent(BaseAgent):
             message = await chat_completion(model, messages, temperature=0)
             content = message.get("content") or ""
             try:
-                data = _parse(content)
+                data = parse_json(content)
                 for c in data.get("claims", []):
                     if isinstance(c, dict):
                         c["source_url"] = source_url  # authoritative
