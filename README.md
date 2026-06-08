@@ -3,9 +3,8 @@ title: Polymath
 emoji: 🧠
 colorFrom: blue
 colorTo: indigo
-sdk: streamlit
-sdk_version: 1.58.0
-app_file: app.py
+sdk: docker
+app_port: 8501
 pinned: false
 ---
 
@@ -100,15 +99,16 @@ uv run python eval/run_critic_eval.py                 # Week 3: Critic gap detec
 
 ## Deploy to Hugging Face Spaces
 
-This repo doubles as a Streamlit Space (config is the YAML frontmatter at the top of
-this file). To deploy:
+This repo doubles as a **Docker** Space (config is the YAML frontmatter at the top of
+this file; the build uses the `Dockerfile`, which runs the Streamlit app). To deploy:
 
-1. Create a new **Streamlit** Space on Hugging Face.
-2. Push this repo to the Space remote (`git push hf main`).
+1. Create a new Space on Hugging Face → SDK **Docker** → **Streamlit** template →
+   **CPU Basic (Free)**.
+2. Push this repo to the Space remote (`git push hf main --force`).
 3. In **Settings → Variables and secrets**, add `OPENROUTER_API_KEY` and
    `TAVILY_API_KEY` as **secrets**.
-4. The Space installs from `requirements.txt`. The first run downloads the ~80 MB ONNX
-   embedding model once (cached afterward).
+4. The Space builds from the `Dockerfile` (installs `requirements.txt`). The first run
+   downloads the ~80 MB ONNX embedding model once (cached afterward).
 
 The app reads keys from environment variables (via `config.py`), so the secrets are
 picked up automatically.
