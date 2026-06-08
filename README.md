@@ -22,7 +22,10 @@ See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full design and build phases.
       wire Planner→Search→Reader→Critic→(loop|Writer)→END with conditional edges and per-node
       trace logging. Adds `agents/planner.py` + `agents/writer.py`. Runs end to end via
       `python -m polymath.graph.workflow --topic "..."` → cited markdown report.
-- [ ] Week 5 — Slide deck + MCP
+- [x] **Week 5 — Slide deck + MCP.** `outputs/slides.py` renders a `.pptx` (title +
+      per-finding slides) from an LLM-built `SlideDeck`; `mcp_server/server.py` (FastMCP)
+      exposes web_search/page_fetch/claim_extract; the workflow calls search+fetch through
+      `tools/mcp_client.py` over stdio. One run → cited `.md` report **and** `.pptx` deck.
 - [ ] Week 6 — Streamlit UI + deploy
 
 ## Setup
@@ -66,3 +69,7 @@ uv run python eval/run_critic_eval.py
 # Full pipeline via the LangGraph state machine -> cited markdown report:
 uv run python -m polymath.graph.workflow --topic "current state of solid-state batteries" --max-iterations 3
 ```
+
+Web search and page fetch run through the local MCP server (`mcp_server/server.py`),
+spawned automatically over stdio. Each run writes both a `.md` report and a `.pptx`
+deck to `outputs/`.

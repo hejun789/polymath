@@ -8,6 +8,8 @@ from polymath.models.schemas import (
     CriticDecision,
     ExtractedClaims,
     ResearchPlan,
+    Slide,
+    SlideDeck,
 )
 
 
@@ -98,3 +100,23 @@ def test_research_plan_parses_subtasks():
 
 def test_research_plan_defaults_empty():
     assert ResearchPlan().subtasks == []
+
+
+def test_slide_deck_parses():
+    deck = SlideDeck.model_validate(
+        {
+            "title": "Solid-State Batteries",
+            "slides": [
+                {"title": "Safety", "bullets": ["non-flammable", "no thermal runaway"], "source_url": "https://example.com/a"},
+                {"title": "Timeline", "bullets": ["2027 pilot"], "source_url": "https://example.com/b"},
+            ],
+        }
+    )
+    assert deck.title == "Solid-State Batteries"
+    assert len(deck.slides) == 2
+    assert deck.slides[0].bullets == ["non-flammable", "no thermal runaway"]
+
+
+def test_slide_defaults_bullets_empty():
+    s = Slide(title="t", source_url="https://example.com")
+    assert s.bullets == []

@@ -161,8 +161,36 @@ def make_default_workflow():
 
 
 async def run_workflow(topic: str, max_iterations: int = 3) -> dict:
-    graph = make_default_workflow()
-    return await graph.ainvoke(GraphState(topic=topic, max_iterations=max_iterations))
+    """Run the full pipeline with web_search/page_fetch flowing through MCP, then
+    synthesize a slide deck. Returns the final state plus a "deck" key.
+    """
+    from polymath.agents.critic import CriticAgent
+    from polymath.agents.planner import PlannerAgent
+    from polymath.agents.reader import ReaderAgent
+    from polymath.agents.writer import WriterAgent
+    from polymath.memory.vector_store import ClaimStore
+    from polymath.tools.mcp_client import mcp_tools
+
+    writer = WriterAgent()
+
+    async with mcp_tools() as tools:  # spawns the MCP tool server over stdio
+        store = ClaimStore(persist_dir=settings.chroma_persist_dir)
+        store.reset()
+        deps = WorkflowDeps(
+            plan_fn=PlannerAgent().plan,
+            search_fn=tools.web_search,  # via MCP
+            fetch_fn=tools.page_fetch,  # via MCP
+            extract_fn=ReaderAgent().extract,
+            review_fn=CriticAgent().review,
+            write_fn=writer.write,
+            store=store,
+        )
+        graph = build_workflow(deps)
+        result = await graph.ainvoke(GraphState(topic=topic, max_iterations=max_iterations))
+
+    # Second artifact: a slide deck synthesized from the gathered claims.
+    result["deck"] = await writer.build_deck(topic=topic, claims=result["claims"])
+    return result
 
 
 # ---- CLI entrypoint ----
@@ -195,15 +223,21 @@ def main() -> None:
 
     result = asyncio.run(run_workflow(args.topic, args.max_iterations))
 
+    from polymath.outputs.slides import render_deck
+
     out_dir = Path(__file__).resolve().parents[3] / "outputs"
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    out_path = out_dir / f"week4-{_slugify(args.topic)}-{ts}.md"
-    out_path.write_text(result["report"] + "\n", encoding="utf-8")
+    stem = f"{_slugify(args.topic)}-{ts}"
+
+    report_path = out_dir / f"{stem}.md"
+    report_path.write_text(result["report"] + "\n", encoding="utf-8")
+    deck_path = render_deck(result["deck"], out_dir / f"{stem}.pptx")
 
     print(f"\nNode transitions: {' -> '.join(t['node'] for t in result['trace'])}")
-    print(f"Iterations: {result['iteration']} | claims: {len(result['claims'])}")
-    print(f"Report written to: {out_path}")
+    print(f"Iterations: {result['iteration']} | claims: {len(result['claims'])} | slides: {len(result['deck'].slides)}")
+    print(f"Report written to: {report_path}")
+    print(f"Deck written to:   {deck_path}")
 
 
 if __name__ == "__main__":

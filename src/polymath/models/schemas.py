@@ -38,6 +38,21 @@ class ResearchPlan(BaseModel):
     subtasks: list[str] = Field(default_factory=list)
 
 
+class Slide(BaseModel):
+    """One content slide: a finding title, up to ~3 bullets, and its source."""
+
+    title: str
+    bullets: list[str] = Field(default_factory=list)
+    source_url: str = ""
+
+
+class SlideDeck(BaseModel):
+    """A deck: a title slide plus one content slide per finding."""
+
+    title: str
+    slides: list[Slide] = Field(default_factory=list)
+
+
 class CriticDecision(BaseModel):
     """The Critic's verdict after reviewing accumulated claims.
 
