@@ -78,11 +78,18 @@ def main() -> None:
                 result = asyncio.run(_run(topic, max_iterations, status))
                 status.update(label="Done ✅", state="complete")
         except Exception as exc:  # noqa: BLE001 - surface any runtime error to the user
+            st.session_state.pop("result", None)
             st.error(f"Run failed: {exc}")
             return
+        # Persist so the result survives the rerun a download_button click causes.
+        st.session_state["result"] = result
+        st.session_state["topic"] = topic
 
+    # Render persisted results (stays put across download-button reruns).
+    result = st.session_state.get("result")
+    if result:
+        stem = _slug(st.session_state.get("topic", "topic"))
         st.success(f"Gathered {len(result['claims'])} claims · {len(result['deck'].slides)} slides.")
-        stem = _slug(topic)
 
         col1, col2 = st.columns(2)
         col1.download_button(
