@@ -42,8 +42,9 @@ def _slug(text: str) -> str:
 
 
 async def _run(topic: str, max_iterations: int, status) -> dict:
-    """Stream the graph, updating the status panel per node; build the deck."""
-    graph, writer = make_direct_workflow()
+    """Stream the graph, updating the status panel per node. The writer node
+    produces the report and the slide deck concurrently."""
+    graph, _ = make_direct_workflow()
     seen = 0
     final: dict = {}
     async for state in graph.astream(
@@ -56,9 +57,7 @@ async def _run(topic: str, max_iterations: int, status) -> dict:
             status.write(NODE_LABELS.get(node, node))
         seen = len(trace)
 
-    status.write("🎞️ Building slide deck…")
-    deck = await writer.build_deck(topic=topic, claims=final["claims"])
-    return {"report": final["report"], "claims": final["claims"], "deck": deck}
+    return {"report": final["report"], "claims": final["claims"], "deck": final["deck"]}
 
 
 def main() -> None:
@@ -70,7 +69,10 @@ def main() -> None:
         return
 
     topic = st.text_input("Research topic", placeholder="e.g. current state of solid-state batteries")
-    max_iterations = st.slider("Max research iterations", 1, 3, 2)
+    max_iterations = st.slider(
+        "Max research iterations", 1, 3, 1,
+        help="More iterations = deeper research but slower (more free-tier API calls).",
+    )
 
     if st.button("Run research", type="primary", disabled=not topic):
         try:

@@ -12,7 +12,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from polymath.models.schemas import Claim
+from polymath.models.schemas import Claim, SlideDeck
 
 
 class GraphState(BaseModel):
@@ -32,6 +32,7 @@ class GraphState(BaseModel):
 
     # Final output:
     report: str = ""
+    deck: SlideDeck | None = None
 
     # Append-only transition log (one entry per node visit).
     trace: Annotated[list[dict[str, Any]], operator.add] = Field(default_factory=list)

@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 
 from polymath.models.openrouter import chat_completion
-from polymath.models.router import Role, model_for
+from polymath.models.router import Role, models_for
 
 
 class BaseAgent:
@@ -25,6 +25,6 @@ class BaseAgent:
 
     async def complete(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict:
         """Run a chat completion using this agent's routed model."""
-        model = model_for(self.role)
-        self.log.info("agent.complete", agent=self.name, model=model)
-        return await chat_completion(model, messages, **kwargs)
+        models = models_for(self.role)
+        self.log.info("agent.complete", agent=self.name, model=models[0])
+        return await chat_completion(models, messages, **kwargs)

@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from polymath.agents.base import BaseAgent
 from polymath.models.openrouter import chat_completion
 from polymath.models.parsing import parse_json
-from polymath.models.router import Role, model_for
+from polymath.models.router import Role, models_for
 from polymath.models.schemas import ResearchPlan
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "planner.md"
@@ -28,7 +28,7 @@ class PlannerAgent(BaseAgent):
     async def plan(self, topic: str, max_retries: int = 2) -> ResearchPlan:
         prompt = _PROMPT_TEMPLATE.replace("{{TOPIC}}", topic)
         messages: list[dict] = [{"role": "user", "content": prompt}]
-        model = model_for(self.role)
+        model = models_for(self.role)
 
         for attempt in range(1, max_retries + 2):
             message = await chat_completion(model, messages, temperature=0.3)

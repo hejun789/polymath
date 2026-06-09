@@ -35,7 +35,33 @@ _DEFAULTS: dict[Role, str] = {
 }
 
 
+# Reliable free chat/JSON models, verified available on OpenRouter. Used as a
+# fallback chain: if the primary model is rate-limited (429), the client rotates
+# to the next one immediately instead of waiting out a long Retry-After.
+_FALLBACK_POOL: list[str] = [
+    "openai/gpt-oss-120b:free",
+    "z-ai/glm-4.5-air:free",
+    "openai/gpt-oss-20b:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+]
+
+
 def model_for(role: Role) -> str:
-    """Return the model id for a role, allowing env override."""
+    """Return the primary model id for a role, allowing env override."""
     env_key = f"POLYMATH_MODEL_{role.value.upper()}"
     return os.environ.get(env_key) or _DEFAULTS[role]
+
+
+def models_for(role: Role) -> list[str]:
+    """Return [primary, ...fallbacks] for a role, de-duplicated, primary first.
+
+    Lets a caller try the next free model the instant the current one is
+    throttled, rather than sleeping on a single rate-limited endpoint.
+    """
+    primary = model_for(role)
+    chain = [primary]
+    for model in _FALLBACK_POOL:
+        if model not in chain:
+            chain.append(model)
+    return chain

@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from polymath.agents.base import BaseAgent
 from polymath.models.openrouter import chat_completion
 from polymath.models.parsing import parse_json
-from polymath.models.router import Role, model_for
+from polymath.models.router import Role, models_for
 from polymath.models.schemas import Claim, Slide, SlideDeck
 
 _PROMPT_DIR = Path(__file__).resolve().parents[1] / "prompts"
@@ -44,7 +44,7 @@ class WriterAgent(BaseAgent):
             "{{CLAIMS}}", _format_claims(claims)
         )
         messages = [{"role": "user", "content": prompt}]
-        model = model_for(self.role)
+        model = models_for(self.role)
         self.log.info("writer.write", n_claims=len(claims))
         message = await chat_completion(model, messages, temperature=0.3)
         return (message.get("content") or "").strip()
@@ -57,7 +57,7 @@ class WriterAgent(BaseAgent):
             "{{CLAIMS}}", _format_claims(claims)
         )
         messages: list[dict] = [{"role": "user", "content": prompt}]
-        model = model_for(self.role)
+        model = models_for(self.role)
 
         for attempt in range(1, max_retries + 2):
             message = await chat_completion(model, messages, temperature=0.3)

@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from polymath.agents.base import BaseAgent
 from polymath.models.openrouter import chat_completion
 from polymath.models.parsing import parse_json
-from polymath.models.router import Role, model_for
+from polymath.models.router import Role, models_for
 from polymath.models.schemas import Claim, CriticDecision
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "critic.md"
@@ -53,7 +53,7 @@ class CriticAgent(BaseAgent):
             .replace("{{CLAIMS}}", _format_claims(claims))
         )
         messages: list[dict] = [{"role": "user", "content": prompt}]
-        model = model_for(self.role)
+        model = models_for(self.role)
 
         for attempt in range(1, max_retries + 2):
             message = await chat_completion(model, messages, temperature=0)

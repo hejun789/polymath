@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from polymath.agents.base import BaseAgent
 from polymath.models.openrouter import chat_completion
 from polymath.models.parsing import parse_json
-from polymath.models.router import Role, model_for
+from polymath.models.router import Role, models_for
 from polymath.models.schemas import Claim, ExtractedClaims
 
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "reader.md"
@@ -47,7 +47,7 @@ class ReaderAgent(BaseAgent):
             "{{TEXT}}", text
         )
         messages: list[dict] = [{"role": "user", "content": prompt}]
-        model = model_for(self.role)
+        model = models_for(self.role)
 
         attempts = 0
         for attempt in range(1, max_retries + 2):  # attempts 1..(max_retries+1)

@@ -42,8 +42,9 @@ class WorkflowDeps:
     review_fn: Callable[..., Awaitable[Any]]
     write_fn: Callable[..., Awaitable[str]]
     store: Any
+    deck_fn: Callable[..., Awaitable[Any]] | None = None  # build the slide deck
     results_per_subtask: int = 2
-    max_pages_per_iter: int = 3
+    max_pages_per_iter: int = 2
 
 
 def route_after_critic(state: GraphState) -> str:
@@ -80,12 +81,18 @@ def build_workflow(deps: WorkflowDeps):
 
     async def reader_node(state: GraphState) -> dict:
         log.info("node.reader.enter", n_urls=len(state.pending_urls))
-        for url in state.pending_urls:
+
+        async def _read(url: str):
             text = await deps.fetch_fn(url)
             if not text:
-                continue
-            result = await deps.extract_fn(text=text, source_url=url)
-            deps.store.add_claims(result.claims)
+                return None
+            return await deps.extract_fn(text=text, source_url=url)
+
+        # Fetch + extract all pages concurrently (each is an independent LLM call).
+        results = await asyncio.gather(*(_read(u) for u in state.pending_urls))
+        for result in results:
+            if result is not None:
+                deps.store.add_claims(result.claims)
         claims = deps.store.all_claims()
         new_iteration = state.iteration + 1
         log.info("node.reader.exit", claims_total=len(claims), iteration=new_iteration)
@@ -97,6 +104,18 @@ def build_workflow(deps: WorkflowDeps):
         }
 
     async def critic_node(state: GraphState) -> dict:
+        # On the final allowed iteration the verdict can't change routing (we go
+        # to the writer regardless), so skip the LLM call entirely.
+        if state.iteration >= state.max_iterations:
+            log.info("node.critic.skip", iteration=state.iteration)
+            return {
+                "decision": "stop",
+                "new_subtasks": [],
+                "reason": "max iterations reached",
+                "subtasks": [],
+                "trace": [{"node": "critic", "decision": "stop", "skipped": True}],
+            }
+
         log.info("node.critic.enter", claims_total=len(state.claims), iteration=state.iteration)
         decision = await deps.review_fn(
             topic=state.topic,
@@ -115,9 +134,20 @@ def build_workflow(deps: WorkflowDeps):
 
     async def writer_node(state: GraphState) -> dict:
         log.info("node.writer.enter", claims_total=len(state.claims))
-        report = await deps.write_fn(topic=state.topic, claims=state.claims)
+        # Report and deck are independent — build them concurrently.
+        if deps.deck_fn is not None:
+            report, deck = await asyncio.gather(
+                deps.write_fn(topic=state.topic, claims=state.claims),
+                deps.deck_fn(topic=state.topic, claims=state.claims),
+            )
+        else:
+            report = await deps.write_fn(topic=state.topic, claims=state.claims)
+            deck = None
         log.info("node.writer.exit", report_chars=len(report))
-        return {"report": report, "trace": [{"node": "writer", "report_chars": len(report)}]}
+        out = {"report": report, "trace": [{"node": "writer", "report_chars": len(report)}]}
+        if deck is not None:
+            out["deck"] = deck
+        return out
 
     g = StateGraph(GraphState)
     g.add_node("planner", planner_node)
@@ -148,6 +178,7 @@ def _assemble_deps(search_fn, fetch_fn, store, writer) -> WorkflowDeps:
         extract_fn=ReaderAgent().extract,
         review_fn=CriticAgent().review,
         write_fn=writer.write,
+        deck_fn=writer.build_deck,
         store=store,
     )
 
@@ -199,8 +230,7 @@ async def run_workflow(topic: str, max_iterations: int = 3, use_mcp: bool = True
         graph = build_workflow(_assemble_deps(web_search, page_fetch, store, writer))
         result = await graph.ainvoke(initial)
 
-    # Second artifact: a slide deck synthesized from the gathered claims.
-    result["deck"] = await writer.build_deck(topic=topic, claims=result["claims"])
+    # The deck is built concurrently with the report inside the writer node.
     return result
 
 
