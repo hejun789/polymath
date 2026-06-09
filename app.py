@@ -106,7 +106,8 @@ def main() -> None:
         )
 
         st.markdown("---")
-        st.markdown(result["report"])
+        # Escape '$' so Streamlit doesn't render dollar amounts as LaTeX math.
+        st.markdown(result["report"].replace("$", "\\$"))
 
 
 # `streamlit run app.py` executes this file with __name__ == "__main__".
