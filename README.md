@@ -15,6 +15,8 @@ citations and an **auto-generated PowerPoint deck**. Specialized agents (Planner
 Search, Reader, Critic, Writer) are coordinated by a **LangGraph** state machine, share
 a **Chroma** vector store as working memory, and call their tools over **MCP**.
 
+**▶️ Live demo:** https://huggingface.co/spaces/hejun123/polymath
+
 > 🎥 _Demo video: (add link after recording)_
 > 🖼️ _Screenshot: `docs/screenshot.png` (add after first deploy)_
 
