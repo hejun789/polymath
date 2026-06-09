@@ -17,8 +17,9 @@ a **Chroma** vector store as working memory, and call their tools over **MCP**.
 
 **▶️ Live demo:** https://huggingface.co/spaces/hejun123/polymath
 
+![Polymath app](docs/screenshot.png)
+
 > 🎥 _Demo video: (add link after recording)_
-> 🖼️ _Screenshot: `docs/screenshot.png` (add after first deploy)_
 
 ## Architecture
 
