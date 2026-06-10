@@ -26,7 +26,10 @@ a **Chroma** vector store as working memory, and call their tools over **MCP**.
 <img width="1269" height="918" alt="Screenshot 2026-06-09 120929" src="https://github.com/user-attachments/assets/24875f3b-2f3b-46b6-a927-2f0b905c00cf" />
 
 
-> 🎥 _Demo video: (add link after recording)_
+> 🎥 _Demo video:
+https://github.com/user-attachments/assets/6b2df806-fd6f-4f33-bd12-21657388c140
+
+
 
 ## Architecture
 
