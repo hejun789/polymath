@@ -17,6 +17,7 @@ a **Chroma** vector store as working memory, and call their tools over **MCP**.
 
 **▶️ Live demo:** https://huggingface.co/spaces/hejun123/polymath
 
+<img width="1916" height="909" alt="Screenshot 2026-06-09 111144" src="https://github.com/user-attachments/assets/05eece2f-af0c-4d65-be22-0d97e49f846c" />
 <img width="1919" height="911" alt="Screenshot 2026-06-09 111553" src="https://github.com/user-attachments/assets/7ef9b245-de51-449c-8274-0a1780c76e10" />
 <img width="1919" height="911" alt="Screenshot 2026-06-09 111442" src="https://github.com/user-attachments/assets/07fa7913-d205-4a06-8e2f-f273cfc3907f" />
 <img width="1919" height="910" alt="Screenshot 2026-06-09 111458" src="https://github.com/user-attachments/assets/4fe57ca1-3c69-4f04-af0c-f8e2ee18a6d2" />
