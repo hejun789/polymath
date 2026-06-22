@@ -16,10 +16,13 @@ from polymath.config import settings
 
 log = structlog.get_logger(__name__)
 
-# Free-tier models get briefly throttled upstream (HTTP 429) or hit transient
-# 5xx. Rather than waiting out a long Retry-After on one model, rotate to the
-# next model in the chain immediately; only wait (capped) between full rounds.
-_RETRY_STATUSES = {429, 502, 503, 504}
+# Free-tier models get briefly throttled (429) or hit transient 5xx; they also
+# get RETIRED (404 "No endpoints found") since the free lineup churns. In all
+# these cases, rotate to the next model in the chain immediately. Only throttles
+# (429/5xx) warrant a short capped wait between full rounds — a 404 is permanent,
+# so there's no point sleeping on it.
+_THROTTLE_STATUSES = {429, 502, 503, 504}
+_ROTATE_STATUSES = _THROTTLE_STATUSES | {404}
 _MAX_ROUNDS = 3
 _MAX_WAIT_CAP = 8.0  # never wait longer than this on a throttle
 
@@ -63,9 +66,10 @@ async def chat_completion(
                     body["tool_choice"] = tool_choice
 
                 resp = await client.post(url, json=body, headers=headers)
-                if resp.status_code in _RETRY_STATUSES:
-                    log.warning("openrouter.throttled", model=m, status=resp.status_code)
-                    last_throttle = resp
+                if resp.status_code in _ROTATE_STATUSES:
+                    log.warning("openrouter.skip_model", model=m, status=resp.status_code)
+                    if resp.status_code in _THROTTLE_STATUSES:
+                        last_throttle = resp  # only throttles justify a between-round wait
                     continue  # try the next model immediately
 
                 resp.raise_for_status()  # raise on non-retryable errors (4xx/etc.)

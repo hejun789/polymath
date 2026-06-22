@@ -24,13 +24,15 @@ class Role(str, Enum):
 # free tier; these are current equivalents verified against the live /models
 # list on 2026-06-07. Roles that call tools (search/reader) use an instruct
 # model with tool support; reasoning-heavy roles use a reasoning-capable model.
+# NOTE: free models churn constantly. glm-4.5-air:free was retired by 2026-06-22.
+# These are verified live against the /models list on 2026-06-22. The fallback
+# chain (models_for) + 404 rotation in openrouter.py mean a future retirement is
+# skipped automatically rather than crashing a run.
 _DEFAULTS: dict[Role, str] = {
-    Role.PLANNER: "z-ai/glm-4.5-air:free",
+    Role.PLANNER: "openai/gpt-oss-120b:free",
     Role.SEARCH: "openai/gpt-oss-120b:free",
     Role.READER: "openai/gpt-oss-120b:free",
-    Role.CRITIC: "z-ai/glm-4.5-air:free",
-    # llama-3.3-70b:free is frequently rate-limited (429) upstream; gpt-oss-120b
-    # has reliable free capacity and handles long-form synthesis well.
+    Role.CRITIC: "openai/gpt-oss-120b:free",
     Role.WRITER: "openai/gpt-oss-120b:free",
 }
 
@@ -40,9 +42,10 @@ _DEFAULTS: dict[Role, str] = {
 # to the next one immediately instead of waiting out a long Retry-After.
 _FALLBACK_POOL: list[str] = [
     "openai/gpt-oss-120b:free",
-    "z-ai/glm-4.5-air:free",
     "openai/gpt-oss-20b:free",
     "qwen/qwen3-next-80b-a3b-instruct:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen3-coder:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
 ]
 

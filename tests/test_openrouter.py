@@ -57,6 +57,18 @@ async def test_rotates_to_next_model_on_429(monkeypatch):
     assert client.models_tried == ["model-a", "model-b"]  # rotated, no wait on model-a
 
 
+async def test_rotates_past_retired_model_404(monkeypatch):
+    # A retired model returns 404 ("No endpoints found"); must skip to the next,
+    # not crash. This is the bug that broke the live app when glm-4.5-air was retired.
+    client = FakeClient([FakeResp(404), _ok("from live model")])
+    monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
+
+    msg = await openrouter.chat_completion(["retired-model", "live-model"], [{"role": "user", "content": "x"}])
+
+    assert msg["content"] == "from live model"
+    assert client.models_tried == ["retired-model", "live-model"]
+
+
 async def test_returns_first_model_when_it_succeeds(monkeypatch):
     client = FakeClient([_ok("from first")])
     monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
