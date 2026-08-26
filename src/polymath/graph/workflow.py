@@ -43,8 +43,13 @@ class WorkflowDeps:
     write_fn: Callable[..., Awaitable[str]]
     store: Any
     deck_fn: Callable[..., Awaitable[Any]] | None = None  # build the slide deck
-    results_per_subtask: int = 2
-    max_pages_per_iter: int = 2
+    results_per_subtask: int = 3
+    # Pages are fetched+extracted concurrently, so a higher cap costs little
+    # wall-clock time but lets more of the Planner's angles actually get read.
+    max_pages_per_iter: int = 4
+    # ~44% of real search results are blocked/paywalled and fetch empty, so we
+    # shortlist this many times the budget and keep the first pages that work.
+    fetch_oversample: int = 2
 
 
 def route_after_critic(state: GraphState) -> str:
@@ -58,6 +63,29 @@ def route_after_critic(state: GraphState) -> str:
     return "search"
 
 
+def select_urls(
+    per_subtask: list[list[str]], seen_urls: list[str], limit: int
+) -> list[str]:
+    """Pick up to `limit` URLs, round-robin across subtasks.
+
+    Taking one URL from each subtask before any subtask's second keeps every
+    angle the Planner identified represented. Concatenating then truncating
+    starved all but the first subtask. Already-read URLs are skipped so a later
+    iteration never re-fetches (and re-extracts) a page we already paid for.
+    """
+    chosen: list[str] = []
+    skip = set(seen_urls)
+    depth = max((len(urls) for urls in per_subtask), default=0)
+    for i in range(depth):
+        for urls in per_subtask:
+            if len(chosen) >= limit:
+                return chosen
+            if i < len(urls) and urls[i] not in skip:
+                chosen.append(urls[i])
+                skip.add(urls[i])
+    return chosen
+
+
 def build_workflow(deps: WorkflowDeps):
     """Build and compile the StateGraph from injected dependencies."""
 
@@ -69,38 +97,79 @@ def build_workflow(deps: WorkflowDeps):
 
     async def search_node(state: GraphState) -> dict:
         log.info("node.search.enter", subtasks=state.subtasks)
-        urls: list[str] = []
-        for query in state.subtasks:
-            for r in await deps.search_fn(query, deps.results_per_subtask):
-                url = r.get("url")
-                if url and url not in urls:
-                    urls.append(url)
-        urls = urls[: deps.max_pages_per_iter]
-        log.info("node.search.exit", n_urls=len(urls))
-        return {"pending_urls": urls, "trace": [{"node": "search", "n_urls": len(urls)}]}
+        # Each subtask is an independent network call — query them concurrently.
+        raw = await asyncio.gather(
+            *(deps.search_fn(q, deps.results_per_subtask) for q in state.subtasks),
+            return_exceptions=True,
+        )
+        per_subtask: list[list[str]] = []
+        for result in raw:
+            if isinstance(result, BaseException):
+                log.warning("node.search.query_failed", error=str(result)[:200])
+                per_subtask.append([])
+                continue
+            per_subtask.append([hit["url"] for hit in result if hit.get("url")])
+
+        budget = deps.max_pages_per_iter * deps.fetch_oversample
+        urls = select_urls(per_subtask, state.seen_urls, budget)
+        log.info("node.search.exit", n_urls=len(urls), n_subtasks=len(state.subtasks))
+        return {
+            "pending_urls": urls,
+            "seen_urls": state.seen_urls + urls,
+            "trace": [{"node": "search", "n_urls": len(urls)}],
+        }
 
     async def reader_node(state: GraphState) -> dict:
-        log.info("node.reader.enter", n_urls=len(state.pending_urls))
+        log.info("node.reader.enter", n_candidates=len(state.pending_urls))
 
-        async def _read(url: str):
-            text = await deps.fetch_fn(url)
-            if not text:
-                return None
-            return await deps.extract_fn(text=text, source_url=url)
+        # Phase 1 — fetch candidates concurrently. This is cheap (no LLM), and
+        # many real results come back empty (bot-blocked, paywalled, JS-only).
+        texts = await asyncio.gather(
+            *(deps.fetch_fn(u) for u in state.pending_urls), return_exceptions=True
+        )
+        usable: list[tuple[str, str]] = []
+        for url, text in zip(state.pending_urls, texts):
+            if isinstance(text, BaseException):
+                log.warning("node.reader.fetch_failed", url=url, error=str(text)[:200])
+                continue
+            if text:
+                usable.append((url, text))
+        usable = usable[: deps.max_pages_per_iter]
 
-        # Fetch + extract all pages concurrently (each is an independent LLM call).
-        results = await asyncio.gather(*(_read(u) for u in state.pending_urls))
-        for result in results:
+        # Phase 2 — spend the expensive extraction budget only on pages that
+        # actually have content. One failure must not kill the run.
+        results = await asyncio.gather(
+            *(deps.extract_fn(text=t, source_url=u) for u, t in usable),
+            return_exceptions=True,
+        )
+        for (url, _), result in zip(usable, results):
+            if isinstance(result, BaseException):
+                log.warning("node.reader.extract_failed", url=url, error=str(result)[:200])
+                continue
             if result is not None:
                 deps.store.add_claims(result.claims)
+
         claims = deps.store.all_claims()
         new_iteration = state.iteration + 1
-        log.info("node.reader.exit", claims_total=len(claims), iteration=new_iteration)
+        log.info(
+            "node.reader.exit",
+            pages_read=len(usable),
+            candidates=len(state.pending_urls),
+            claims_total=len(claims),
+            iteration=new_iteration,
+        )
         return {
             "claims": claims,
             "iteration": new_iteration,
             "pending_urls": [],
-            "trace": [{"node": "reader", "claims_total": len(claims), "iteration": new_iteration}],
+            "trace": [
+                {
+                    "node": "reader",
+                    "claims_total": len(claims),
+                    "pages_read": len(usable),
+                    "iteration": new_iteration,
+                }
+            ],
         }
 
     async def critic_node(state: GraphState) -> dict:

@@ -89,5 +89,28 @@ async def test_raises_when_all_models_throttled(monkeypatch):
     client = FakeClient([FakeResp(429)] * 4)
     monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
 
-    with pytest.raises(RuntimeError, match="throttled"):
+    with pytest.raises(RuntimeError, match="No model in"):
+        await openrouter.chat_completion(["a", "b"], [{"role": "user", "content": "x"}])
+
+
+async def test_rotates_when_200_body_carries_upstream_error(monkeypatch):
+    """OpenRouter answers HTTP 200 with an error payload when the upstream
+    provider is overloaded. That must rotate to the next model, not abort
+    the run (this crashed a live run: 'Upstream error from Nvidia')."""
+    overloaded = FakeResp(200, {"error": {"message": "Service temporarily overloaded", "code": 502}})
+    client = FakeClient([overloaded, _ok("from healthy model")])
+    monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
+
+    msg = await openrouter.chat_completion(["overloaded", "healthy"], [{"role": "user", "content": "x"}])
+
+    assert msg["content"] == "from healthy model"
+    assert client.models_tried == ["overloaded", "healthy"]
+
+
+async def test_raises_when_every_model_returns_error_body(monkeypatch):
+    monkeypatch.setattr(openrouter, "_MAX_ROUNDS", 1)
+    client = FakeClient([FakeResp(200, {"error": {"message": "boom"}})] * 2)
+    monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
+
+    with pytest.raises(RuntimeError):
         await openrouter.chat_completion(["a", "b"], [{"role": "user", "content": "x"}])

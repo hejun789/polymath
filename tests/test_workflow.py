@@ -1,7 +1,14 @@
 """Tests for the LangGraph workflow: routing logic + full graph run with fakes."""
 
+import asyncio
+
 from polymath.graph.state import GraphState
-from polymath.graph.workflow import WorkflowDeps, build_workflow, route_after_critic
+from polymath.graph.workflow import (
+    WorkflowDeps,
+    build_workflow,
+    route_after_critic,
+    select_urls,
+)
 from polymath.models.schemas import Claim, CriticDecision, ResearchPlan
 
 
@@ -126,3 +133,149 @@ async def test_astream_values_yields_progress_and_final():
     final = states[-1]
     assert final["report"] != ""
     assert [t["node"] for t in final["trace"]] == ["planner", "search", "reader", "critic", "writer"]
+
+
+# ---- URL selection: round-robin across subtasks + skip already-read pages ----
+
+def test_select_urls_takes_one_from_each_subtask_before_seconds():
+    """The Planner's whole point is covering different angles. Truncating a
+    sequentially-built list starved every subtask but the first."""
+    per_subtask = [
+        ["https://a/1", "https://a/2"],
+        ["https://b/1", "https://b/2"],
+        ["https://c/1", "https://c/2"],
+    ]
+    chosen = select_urls(per_subtask, seen_urls=[], limit=3)
+    assert chosen == ["https://a/1", "https://b/1", "https://c/1"]
+
+
+def test_select_urls_wraps_to_second_round_when_limit_allows():
+    per_subtask = [["https://a/1", "https://a/2"], ["https://b/1", "https://b/2"]]
+    assert select_urls(per_subtask, seen_urls=[], limit=4) == [
+        "https://a/1", "https://b/1", "https://a/2", "https://b/2",
+    ]
+
+
+def test_select_urls_skips_already_read_pages():
+    per_subtask = [["https://a/1", "https://a/2"], ["https://b/1"]]
+    chosen = select_urls(per_subtask, seen_urls=["https://a/1"], limit=2)
+    assert "https://a/1" not in chosen
+    assert chosen == ["https://b/1", "https://a/2"]
+
+
+def test_select_urls_dedupes_same_url_from_two_subtasks():
+    per_subtask = [["https://dup"], ["https://dup"], ["https://c/1"]]
+    assert select_urls(per_subtask, seen_urls=[], limit=5) == ["https://dup", "https://c/1"]
+
+
+# ---- resilience + concurrency ----
+
+async def test_reader_survives_one_failing_page():
+    """A single bad page (or a throttled extraction) must not kill the whole run."""
+    async def plan_fn(topic):
+        return ResearchPlan(subtasks=["q1", "q2"])
+
+    async def search_fn(query, max_results):
+        return [{"url": f"https://ex/{query}", "title": "", "content": ""}]
+
+    async def fetch_fn(url):
+        return f"text for {url}"
+
+    async def extract_fn(*, text, source_url):
+        if source_url.endswith("q1"):
+            raise RuntimeError("all models throttled for this page")
+        return ReaderResultLike(
+            [Claim(claim="survived", evidence_quote="q", source_url=source_url, confidence="high")]
+        )
+
+    async def review_fn(*, topic, claims, iteration, max_iterations):
+        return CriticDecision(decision="stop", reason="done")
+
+    async def write_fn(*, topic, claims):
+        return f"# Report ({len(claims)} claims)"
+
+    deps = WorkflowDeps(
+        plan_fn=plan_fn, search_fn=search_fn, fetch_fn=fetch_fn, extract_fn=extract_fn,
+        review_fn=review_fn, write_fn=write_fn, store=FakeStore(),
+    )
+    result = await build_workflow(deps).ainvoke(GraphState(topic="t"))
+
+    assert result["report"] != ""            # run completed despite the failure
+    assert len(result["claims"]) == 1        # the healthy page still contributed
+    assert result["claims"][0].claim == "survived"
+
+
+async def test_search_queries_run_concurrently():
+    in_flight = 0
+    peak = 0
+
+    async def search_fn(query, max_results):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.02)
+        in_flight -= 1
+        return [{"url": f"https://ex/{query}", "title": "", "content": ""}]
+
+    async def plan_fn(topic):
+        return ResearchPlan(subtasks=["q1", "q2", "q3"])
+
+    async def fetch_fn(url):
+        return "text"
+
+    async def extract_fn(*, text, source_url):
+        return ReaderResultLike([])
+
+    async def review_fn(*, topic, claims, iteration, max_iterations):
+        return CriticDecision(decision="stop", reason="done")
+
+    async def write_fn(*, topic, claims):
+        return "# Report"
+
+    deps = WorkflowDeps(
+        plan_fn=plan_fn, search_fn=search_fn, fetch_fn=fetch_fn, extract_fn=extract_fn,
+        review_fn=review_fn, write_fn=write_fn, store=FakeStore(),
+    )
+    await build_workflow(deps).ainvoke(GraphState(topic="t"))
+
+    assert peak > 1, "subtask searches should overlap, not run one after another"
+
+
+async def test_reader_backfills_past_pages_that_fail_to_fetch():
+    """~44% of real search results are blocked/paywalled and return empty text.
+    The reader should skip those and still spend its extraction budget on
+    `max_pages_per_iter` pages that actually have content."""
+    extracted: list[str] = []
+
+    async def plan_fn(topic):
+        return ResearchPlan(subtasks=["q1"])
+
+    async def search_fn(query, max_results):
+        return [{"url": f"https://ex/{i}", "title": "", "content": ""} for i in range(6)]
+
+    async def fetch_fn(url):
+        return "" if url in ("https://ex/0", "https://ex/1") else f"text {url}"
+
+    async def extract_fn(*, text, source_url):
+        extracted.append(source_url)
+        return ReaderResultLike(
+            [Claim(claim=f"c {source_url}", evidence_quote="q", source_url=source_url, confidence="high")]
+        )
+
+    async def review_fn(*, topic, claims, iteration, max_iterations):
+        return CriticDecision(decision="stop", reason="done")
+
+    async def write_fn(*, topic, claims):
+        return "# Report"
+
+    deps = WorkflowDeps(
+        plan_fn=plan_fn, search_fn=search_fn, fetch_fn=fetch_fn, extract_fn=extract_fn,
+        review_fn=review_fn, write_fn=write_fn, store=FakeStore(), max_pages_per_iter=2,
+    )
+    result = await build_workflow(deps).ainvoke(GraphState(topic="t"))
+
+    # Blocked pages skipped; the two healthy ones extracted instead.
+    assert extracted == ["https://ex/2", "https://ex/3"]
+    assert len(result["claims"]) == 2
+    # Dead links are remembered so the next iteration doesn't retry them.
+    assert "https://ex/0" in result["seen_urls"]

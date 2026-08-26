@@ -56,6 +56,7 @@ async def chat_completion(
 
     log.info("openrouter.request", models=models, n_messages=len(messages))
     last_throttle: httpx.Response | None = None
+    last_error_body: dict[str, Any] | None = None
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         for round_no in range(1, _MAX_ROUNDS + 1):
@@ -75,7 +76,11 @@ async def chat_completion(
                 resp.raise_for_status()  # raise on non-retryable errors (4xx/etc.)
                 data = resp.json()
                 if "choices" not in data or not data["choices"]:
-                    raise RuntimeError(f"OpenRouter returned no choices: {data}")
+                    # OpenRouter answers HTTP 200 with an error payload when the
+                    # upstream provider is down/overloaded. Rotate, don't abort.
+                    log.warning("openrouter.error_body", model=m, body=str(data)[:200])
+                    last_error_body = data
+                    continue
                 log.info("openrouter.ok", model=m, round=round_no)
                 return data["choices"][0]["message"]
 
@@ -86,7 +91,8 @@ async def chat_completion(
                 await asyncio.sleep(wait)
 
     raise RuntimeError(
-        f"All models throttled after {_MAX_ROUNDS} rounds: {models}"
+        f"No model in {models} answered after {_MAX_ROUNDS} rounds"
+        + (f"; last upstream error: {last_error_body}" if last_error_body else "")
     )
 
 

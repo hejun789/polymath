@@ -23,6 +23,7 @@ class GraphState(BaseModel):
     iteration: int = 0
     subtasks: list[str] = Field(default_factory=list)  # current search queries
     pending_urls: list[str] = Field(default_factory=list)  # URLs awaiting the Reader
+    seen_urls: list[str] = Field(default_factory=list)  # pages already read, never re-fetched
     claims: list[Claim] = Field(default_factory=list)  # snapshot of the store
 
     # Critic output:
