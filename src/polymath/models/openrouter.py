@@ -22,7 +22,9 @@ log = structlog.get_logger(__name__)
 # (429/5xx) warrant a short capped wait between full rounds — a 404 is permanent,
 # so there's no point sleeping on it.
 _THROTTLE_STATUSES = {429, 502, 503, 504}
-_ROTATE_STATUSES = _THROTTLE_STATUSES | {404}
+# 404 retired, 402 now paid-only, 403 gated to certain accounts — all mean
+# "this model won't serve us", so move on instead of failing the run.
+_ROTATE_STATUSES = _THROTTLE_STATUSES | {404, 402, 403}
 _MAX_ROUNDS = 3
 _MAX_WAIT_CAP = 8.0  # never wait longer than this on a throttle
 
@@ -57,6 +59,7 @@ async def chat_completion(
     log.info("openrouter.request", models=models, n_messages=len(messages))
     last_throttle: httpx.Response | None = None
     last_error_body: dict[str, Any] | None = None
+    last_transport_error: Exception | None = None
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         for round_no in range(1, _MAX_ROUNDS + 1):
@@ -66,7 +69,14 @@ async def chat_completion(
                     body["tools"] = tools
                     body["tool_choice"] = tool_choice
 
-                resp = await client.post(url, json=body, headers=headers)
+                try:
+                    resp = await client.post(url, json=body, headers=headers)
+                except httpx.HTTPError as exc:
+                    # Timeout / connection reset: a slow or dead model must not
+                    # take the whole run down — move to the next one.
+                    log.warning("openrouter.transport_error", model=m, error=str(exc)[:150])
+                    last_transport_error = exc
+                    continue
                 if resp.status_code in _ROTATE_STATUSES:
                     log.warning("openrouter.skip_model", model=m, status=resp.status_code)
                     if resp.status_code in _THROTTLE_STATUSES:
@@ -93,6 +103,7 @@ async def chat_completion(
     raise RuntimeError(
         f"No model in {models} answered after {_MAX_ROUNDS} rounds"
         + (f"; last upstream error: {last_error_body}" if last_error_body else "")
+        + (f"; last transport error: {last_transport_error}" if last_transport_error else "")
     )
 
 

@@ -24,29 +24,27 @@ class Role(str, Enum):
 # free tier; these are current equivalents verified against the live /models
 # list on 2026-06-07. Roles that call tools (search/reader) use an instruct
 # model with tool support; reasoning-heavy roles use a reasoning-capable model.
-# NOTE: free models churn constantly. glm-4.5-air:free was retired by 2026-06-22.
-# These are verified live against the /models list on 2026-06-22. The fallback
-# chain (models_for) + 404 rotation in openrouter.py mean a future retirement is
-# skipped automatically rather than crashing a run.
+# NOTE: OpenRouter's free lineup churns hard — models get retired (404), moved
+# behind payment (402), gated (403), or silently become unusably slow. Every id
+# below was verified by actually CALLING it with a representative prompt on
+# 2026-08-31, not just by appearing in the /models listing (the listing lies).
+# laguna-s-2.1 handled both JSON extraction and long-form writing in ~15s.
 _DEFAULTS: dict[Role, str] = {
-    Role.PLANNER: "openai/gpt-oss-120b:free",
-    Role.SEARCH: "openai/gpt-oss-120b:free",
-    Role.READER: "openai/gpt-oss-120b:free",
-    Role.CRITIC: "openai/gpt-oss-120b:free",
-    Role.WRITER: "openai/gpt-oss-120b:free",
+    Role.PLANNER: "poolside/laguna-s-2.1:free",
+    Role.SEARCH: "poolside/laguna-s-2.1:free",
+    Role.READER: "poolside/laguna-s-2.1:free",
+    Role.CRITIC: "poolside/laguna-s-2.1:free",
+    Role.WRITER: "poolside/laguna-s-2.1:free",
 }
 
 
-# Reliable free chat/JSON models, verified available on OpenRouter. Used as a
-# fallback chain: if the primary model is rate-limited (429), the client rotates
-# to the next one immediately instead of waiting out a long Retry-After.
+# Fallback chain, ordered fastest-first. nemotron-3.5-lightning works but took
+# ~370s on a long writing prompt (past the client timeout), so it sits last —
+# the transport-error rotation in openrouter.py handles it gracefully.
 _FALLBACK_POOL: list[str] = [
-    "openai/gpt-oss-120b:free",
-    "openai/gpt-oss-20b:free",
-    "qwen/qwen3-next-80b-a3b-instruct:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "qwen/qwen3-coder:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
+    "poolside/laguna-s-2.1:free",
+    "poolside/laguna-xs-2.1:free",
+    "nvidia/nemotron-3.5-lightning:free",
 ]
 
 

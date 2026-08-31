@@ -35,7 +35,10 @@ class FakeClient:
 
     async def post(self, url, json=None, headers=None):
         self.models_tried.append(json["model"])
-        return self._responses.pop(0)
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
 
 
 @pytest.fixture(autouse=True)
@@ -113,4 +116,26 @@ async def test_raises_when_every_model_returns_error_body(monkeypatch):
     monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
 
     with pytest.raises(RuntimeError):
+        await openrouter.chat_completion(["a", "b"], [{"role": "user", "content": "x"}])
+
+
+async def test_rotates_when_a_model_times_out(monkeypatch):
+    """A slow model raises httpx.ReadTimeout rather than returning a status.
+    That must rotate to the next model, not crash the run (a 370s writer call
+    blew the client timeout and killed a live run)."""
+    client = FakeClient([httpx.ReadTimeout("too slow"), _ok("from fast model")])
+    monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
+
+    msg = await openrouter.chat_completion(["slow", "fast"], [{"role": "user", "content": "x"}])
+
+    assert msg["content"] == "from fast model"
+    assert client.models_tried == ["slow", "fast"]
+
+
+async def test_raises_when_every_model_times_out(monkeypatch):
+    monkeypatch.setattr(openrouter, "_MAX_ROUNDS", 1)
+    client = FakeClient([httpx.ConnectError("down")] * 2)
+    monkeypatch.setattr(openrouter.httpx, "AsyncClient", lambda **kw: client)
+
+    with pytest.raises(RuntimeError, match="No model in"):
         await openrouter.chat_completion(["a", "b"], [{"role": "user", "content": "x"}])
