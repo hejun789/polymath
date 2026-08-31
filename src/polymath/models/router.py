@@ -24,27 +24,38 @@ class Role(str, Enum):
 # free tier; these are current equivalents verified against the live /models
 # list on 2026-06-07. Roles that call tools (search/reader) use an instruct
 # model with tool support; reasoning-heavy roles use a reasoning-capable model.
-# NOTE: OpenRouter's free lineup churns hard — models get retired (404), moved
-# behind payment (402), gated (403), or silently become unusably slow. Every id
-# below was verified by actually CALLING it with a representative prompt on
-# 2026-08-31, not just by appearing in the /models listing (the listing lies).
-# laguna-s-2.1 handled both JSON extraction and long-form writing in ~15s.
+# NOTE: OpenRouter's free lineup is highly volatile — models get retired (404),
+# moved behind payment (402), gated (403), throttled (429), or become unusably
+# slow, and they flip between these states within minutes (models that returned
+# 402 one hour were serving fine the next). So the strategy is NOT to bet on one
+# "best" model but to keep a DEEP chain of verified-capable ones and let
+# openrouter.py rotate through it.
+#
+# Every id below was verified on 2026-08-31 by actually calling it on both real
+# workloads — JSON claim extraction AND long-form report writing — not by a
+# "say ok" ping and not by trusting the /models listing (which lists models that
+# then refuse to serve). Excluded despite being listed: nemotron-3-ultra-550b
+# (writes reports with zero citation links), nemotron-3.5-content-safety (can't
+# produce valid JSON), nemotron-3.5-lightning (~370s on long prompts).
 _DEFAULTS: dict[Role, str] = {
-    Role.PLANNER: "poolside/laguna-s-2.1:free",
-    Role.SEARCH: "poolside/laguna-s-2.1:free",
-    Role.READER: "poolside/laguna-s-2.1:free",
-    Role.CRITIC: "poolside/laguna-s-2.1:free",
-    Role.WRITER: "poolside/laguna-s-2.1:free",
+    Role.PLANNER: "minimax/minimax-m3:free",
+    Role.SEARCH: "minimax/minimax-m3:free",
+    Role.READER: "minimax/minimax-m3:free",
+    Role.CRITIC: "minimax/minimax-m3:free",
+    Role.WRITER: "minimax/minimax-m3:free",
 }
 
 
-# Fallback chain, ordered fastest-first. nemotron-3.5-lightning works but took
-# ~370s on a long writing prompt (past the client timeout), so it sits last —
-# the transport-error rotation in openrouter.py handles it gracefully.
+# Fallback chain, ordered by measured speed on the JSON-extraction workload.
+# Timings are extraction / long-form writing.
 _FALLBACK_POOL: list[str] = [
-    "poolside/laguna-s-2.1:free",
-    "poolside/laguna-xs-2.1:free",
-    "nvidia/nemotron-3.5-lightning:free",
+    "minimax/minimax-m3:free",                  # 3.2s / 16.9s — best quality
+    "inclusionai/ling-3.0-flash-fin:free",      # 3.7s / 23.7s
+    "cohere/north-mini-code:free",              # 3.7s / 16.3s
+    "nvidia/nemotron-3-super-120b-a12b:free",   # 8.8s / 15.8s
+    "poolside/laguna-s-2.1:free",               # ~15s / ~15s
+    "dots-studio/dots-3-note-preview:free",     # 26.9s / 28.5s
+    "minimax/minimax-m2.7:free",                # 18.7s / 75.8s — last resort
 ]
 
 
